@@ -1,0 +1,11 @@
+[project]
+name = "fastapi-ecommerce"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi[standard]>=0.129.0",
+    "pre-commit>=4.5.1",
+    "sqlalchemy>=2.0.46",
+]
