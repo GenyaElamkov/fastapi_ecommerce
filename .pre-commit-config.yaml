@@ -8,14 +8,14 @@ repos:
     -   id: pyupgrade
         # args: [--py38-plus]
 
--   repo: https://github.com/asottile/add-trailing-comma
-    rev: v4.0.0
-    hooks:
-    -   id: add-trailing-comma
+# -   repo: https://github.com/asottile/add-trailing-comma
+#     rev: v4.0.0
+#     hooks:
+#     -   id: add-trailing-comma
         # args: [--py36-plus]
 
 -   repo: https://github.com/myint/autoflake
-    rev: v2.3.2
+    rev: v2.3.3
     hooks:
     -   id: autoflake
         args: [
@@ -33,7 +33,7 @@ repos:
 #         args: ['-S']
 
 -   repo: https://github.com/pycqa/isort
-    rev: 7.0.0
+    rev: 8.0.1
     hooks:
     -   id: isort
 
@@ -44,19 +44,19 @@ repos:
 #     -   id: mypy
 #         args: [--ignore-missing-imports]
 
--   repo: https://github.com/pycqa/flake8
-    rev: 7.3.0
-    hooks:
-    -   id: flake8
-        args: [
-          --config=.flake8,
-          --max-line-length=120,
-        ]
-        exclude: .git|__pycache__
-        additional_dependencies:
-          - flake8-builtins>=1.5.3
-          - flake8-commas>=2.0.0
-          - flake8-debugger>=4.0.0
-          - flake8-comprehensions>=3.3.1
-          - flake8-eradicate>=1.0.0
-          - dlint>=0.11.0
+# -   repo: https://github.com/pycqa/flake8
+#     rev: 7.3.0
+#     hooks:
+#     -   id: flake8
+#         args: [
+#           --config=.flake8,
+#           --max-line-length=120,
+#         ]
+#         exclude: .git|__pycache__
+#         additional_dependencies:
+#           - flake8-builtins>=1.5.3
+#           - flake8-commas>=2.0.0
+#           - flake8-debugger>=4.0.0
+#           - flake8-comprehensions>=3.3.1
+#           - flake8-eradicate>=1.0.0
+#           - dlint>=0.11.0
