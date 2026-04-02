@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import get_current_user
+from app.auth import get_current_admin
 from app.db_depends import get_async_db
 from app.models import Category as CategoryModel
 from app.schemas import Category as CategorySchema
@@ -27,7 +27,7 @@ async def get_all_categories(db: AsyncSession = Depends(get_async_db)) -> dict:
 async def create_category(
     category: CategoryCreateShema,
     db: AsyncSession = Depends(get_async_db),
-    current_user = Depends(get_current_user),
+    current_user = Depends(get_current_admin),
 ) -> CategorySchema:
     """Добавляет категорию"""
     if category.parent_id is not None:
@@ -55,7 +55,7 @@ async def create_category(
 async def update_category(
     category_id: int, category: CategoryCreateShema,
     db: AsyncSession = Depends(get_async_db),
-    current_user=Depends(get_current_user),    # noqa
+    current_user=Depends(get_current_admin),    # noqa
 ):
     result = await db.scalars(
         select(CategoryModel).where(

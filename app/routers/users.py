@@ -48,6 +48,7 @@ async def create_user(
 
 @router.get("/", response_model=list[UserSchema])
 async def get_all_users(db: AsyncSession = Depends(get_async_db)):
+    """Получает все пользователей."""
     users_result = await db.scalars(select(UserModel))
     users = users_result.all()
     if not users:
@@ -133,3 +134,41 @@ async def refresh_token(
         data={"sub": user.email, "role": user.role, "id": user.id},
     )
     return {"refresh_token": new_refresh_token, "token_type": "bearer"}
+
+
+@router.post("/access-token")
+async def get_access_token(
+    body: RefreshTokenRequest,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Возвращает access-token, принимая refresh-token в теле запроса"""
+    
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate refresh token",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    old_refresh_token = body.refresh_token
+
+    try:
+        pyload = jwt.decode(old_refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str | None = pyload.get("sub")
+        token_type: str | None = pyload.get("token_type")
+        if email is None or token_type != "refresh":
+            raise credentials_exception
+    except jwt.ExpiredSignatureError:
+        raise credentials_exception
+    except jwt.PyJWTError:
+        raise credentials_exception
+    
+    result = await db.scalars(
+        select(UserModel).where(UserModel.email == email, UserModel.is_active == True)
+    )
+    user = result.one_or_none()
+    if user is None:
+        raise credentials_exception
+    
+    new_access_token = create_access_token(
+        data={"sub": user.email, "role": user.role, "id": user.id},
+    )
+    return {"access_token": new_access_token, "token_type": "bearer"}

@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 
 class Category(Base):
+    """Модель категории"""
     __tablename__ = "categories"
 
     name: Mapped[str] = mapped_column(String(50), nullable=False)

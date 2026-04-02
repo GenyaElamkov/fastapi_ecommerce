@@ -1,3 +1,4 @@
+from datetime import datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
@@ -59,12 +60,34 @@ class Product(BaseModel):
     image_url: str | None = Field(None, description="URL изображения товара")
     stock: int = Field(..., description="Количество товара на складе")
     category_id: int = Field(..., description="ID категории")
+    rating: float = Field(..., description="Рейтинг товара (1-5)")
     is_active: bool = Field(..., description="Активность товара")
 
     model_config = ConfigDict(from_attributes=True)
 
 
+class ReviewCreate(BaseModel):
+    """Модель для создания отзыва о товаре."""
+    product_id: int = Field(..., description="ID товара, о котором отзыв")
+    comment: str | None = Field(None, description="Текст отзыва")
+    grade: int = Field(..., ge=1, le=5, description="Оценка товара (1-5)")
+
+
+class Review(BaseModel):
+    """Модель для ответа с отзывом о товаре."""
+    id: int = Field(..., description="Уникальный идентификатор отзыва") # noqa
+    user_id: int = Field(..., description="ID пользователя, оставившего отзыв")
+    product_id: int = Field(..., description="ID товара, о котором отзыв")
+    comment: str | None = Field(None, description="Текст отзыва")
+    comment_date: datetime = Field(..., description="Дата и время отзыва")
+    grade: int = Field(..., description="Оценка товара (1-5)")
+    is_active: bool = Field(..., description="Активность отзыва")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class UserCreate(BaseModel):
+    """Модель для создания пользователя."""
     email: EmailStr = Field(description="Email пользователя")
     password: str = Field(min_length=8, description="Пароль (минимум 8 символов)")
     role: str = Field(
@@ -75,6 +98,7 @@ class UserCreate(BaseModel):
 
 
 class User(BaseModel):
+    """Модель для ответа с данными пользователя."""
     id: int # noqa
     email: EmailStr
     is_active: bool
@@ -83,4 +107,6 @@ class User(BaseModel):
 
 
 class RefreshTokenRequest(BaseModel):
+    """Модель для запроса обновления токена."""
     refresh_token: str
+

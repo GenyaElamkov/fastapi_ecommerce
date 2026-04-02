@@ -1,16 +1,7 @@
-from sqlalchemy import create_engine
+from sqlalchemy import Integer
 from sqlalchemy.ext.asyncio import (AsyncSession, async_sessionmaker,
                                     create_async_engine)
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
-
-# Строка подключения для SQLite
-DATABASE_URL = "sqlite:///ecommerce.db"
-
-# Создаём Engine
-engine = create_engine(DATABASE_URL, echo=True)
-
-# Настраиваем фабрику сеансов
-SessionLocal = sessionmaker(bind=engine)
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 # В дальнейшем нужно использовать .env
 DATABASE_URL = "postgresql+asyncpg://ecommerce_user:23121984@localhost:5432/ecommerce_db"
@@ -20,4 +11,4 @@ async_session_maker = async_sessionmaker(async_engine, expire_on_commit=False, c
 
 
 class Base(DeclarativeBase):
-    id: Mapped[int] = mapped_column(primary_key=True)   # noqa
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)   # noqa
