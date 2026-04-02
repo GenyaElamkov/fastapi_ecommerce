@@ -67,31 +67,6 @@ async def get_all_reviews(db: AsyncSession = Depends(get_async_db)) -> list[Revi
     return reviews
 
 
-@router.get("/{product_id}/reviews/", response_model=list[ReviewSchema])
-async def get_product_reviews(product_id: int, 
-                              db: AsyncSession = Depends(get_async_db),
-                              ) -> list[ReviewSchema]:
-    """Возвращает список отзывов в указанном продукте по ID."""
-    product_result = await db.scalars(
-        select(ProductModel).where(
-            ProductModel.id == product_id,
-            ProductModel.is_active == True,
-        )
-    )
-    if product_result.first() is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, 
-            detail="Product not found or inactive",
-        )
-    reviews = await db.scalars(
-        select(ReviewModel).where(
-            ReviewModel.product_id == product_id, 
-            ReviewModel.is_active == True,
-        )
-    )
-    return reviews.all()
-
-
 @router.delete("/{review_id}")
 async def delete_review(review_id: int, 
                         db: AsyncSession = Depends(get_async_db),
