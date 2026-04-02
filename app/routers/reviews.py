@@ -31,6 +31,19 @@ async def create_review(review: ReviewCreateSchema,
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Product not found",
         )
+        
+    coincidence = await db.scalars(
+        select(ReviewModel).where(
+            ReviewModel.user_id == current_user.id,
+            ReviewModel.product_id == review.product_id,
+        )
+    )
+    if coincidence.first():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="It is impossible to leave a review because a review already exists",
+        )
+    
     if review.grade > 5 or review.grade < 1:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, 
