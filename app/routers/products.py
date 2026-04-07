@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_seller
@@ -10,6 +10,8 @@ from app.models import Review as ReviewModel
 from app.models import User as UserModel
 from app.schemas import Product as ProductSchema
 from app.schemas import ProductCreate as ProductCreateSchema
+from app.schemas import ProductList as ProductListSchema
+from app.schemas import ProductsRequest as ProductFilterSchema
 from app.schemas import Review as ReviewSchema
 
 router = APIRouter(
@@ -18,18 +20,57 @@ router = APIRouter(
 )
 
 
-@router.get("/", response_model=list[ProductSchema])
-async def get_all_products(db: AsyncSession = Depends(get_async_db)) -> list[ProductSchema]:
+@router.get("/", response_model=ProductListSchema)
+async def get_all_products(request: ProductFilterSchema  = Depends(),
+                            db: AsyncSession = Depends(get_async_db),
+    ) -> ProductListSchema:
     """Возвращает все товары"""
-    result = await db.scalars(
-        select(ProductModel).join(CategoryModel).where(
-            ProductModel.is_active == True,   # noqa
-            CategoryModel.is_active == True,   # noqa
-            ProductModel.stock > 0,
-        ),
+    if request.min_price is not None and request.max_price is not None and request.min_price > request.max_price:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="min_price не может быть больше max_price",
+        )
+
+    filters = [ProductModel.is_active == True]    # noqa
+    if request.category_id is not None:
+        filters.append(ProductModel.category_id == request.category_id)
+    if request.min_price is not None:
+        filters.append(ProductModel.price >= request.min_price)
+    if request.max_price is not None:
+        filters.append(ProductModel.price <= request.max_price)
+    if request.in_stock is not None:
+        filters.append(ProductModel.stock > 0 if request.in_stock else ProductModel.stock == 0)
+    if request.seller_id is not None:
+        filters.append(ProductModel.seller_id == request.seller_id)
+    
+    data_sort =[]
+    if request.created is not None:
+        data_sort.append(ProductModel.created_at.desc() if request.created else ProductModel.created_at.asc())
+    else:
+        data_sort.append(ProductModel.id)
+
+    if request.search is not None:
+        search_value = request.search.strip()
+        if search_value:
+            filters.append(func.lower(ProductModel.name).like(f"%{search_value.lower()}%"))
+                           
+    total_stmt = select(func.count()).select_from(ProductModel).where(*filters)
+    total = await db.scalar(total_stmt) or 0
+
+    product_stm = (
+        select(ProductModel)
+        .where(*filters)
+        .order_by(*data_sort)
+        .offset((request.page - 1) * request.page_size)
+        .limit(request.page_size)
     )
-    products = result.all()
-    return products
+    items = (await db.scalars(product_stm)).all()
+    return {
+        "items": items,
+        "total": total,
+        "page": request.page,
+        "page_size": request.page_size,
+    }
 
 
 @router.post("/", response_model=ProductSchema, status_code=status.HTTP_201_CREATED)
