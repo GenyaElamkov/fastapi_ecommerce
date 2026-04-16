@@ -1,5 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, select, update
+import uuid
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from sqlalchemy import desc, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_seller
@@ -19,6 +22,42 @@ router = APIRouter(
     tags=["products"],
 )
 
+BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
+MEDIA_ROOT = BASE_DIR / "media" / "products"
+MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
+ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
+MAX_IMAGE_SIZE = 2 * 1024 * 1024  # 2 097 152 байт
+
+async def save_product_image(file: UploadFile) -> str:
+    """Сохраняет изображение товара и возвращает его URL"""
+    if file.content_type not in ALLOWED_IMAGE_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Image type not allowed",
+        )
+    content = await file.read()
+    if len(content) > MAX_IMAGE_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Image size exceeds the limit",
+        )
+    extension = Path(file.filename or "").suffix.lower() or '.jpg'
+    file_name = f"{uuid.uuid4()}{extension}"
+    file_path = MEDIA_ROOT / file_name
+    file_path.write_bytes(content)
+
+    return f"/media/products/{file_name}"
+
+
+def remove_product_image(url: str | None) -> None:
+    """Удаляет файл изображения, если он существует."""
+    if not url:
+        return
+    relative_path = url.lstrip("/")
+    file_path = BASE_DIR / relative_path
+    if file_path.exists():
+        file_path.unlink()
+
 
 @router.get("/", response_model=ProductListSchema)
 async def get_all_products(request: ProductFilterSchema  = Depends(),
@@ -31,7 +70,8 @@ async def get_all_products(request: ProductFilterSchema  = Depends(),
             detail="min_price не может быть больше max_price",
         )
 
-    filters = [ProductModel.is_active == True]    # noqa
+    filters = [ProductModel.is_active.is_(True)]
+
     if request.category_id is not None:
         filters.append(ProductModel.category_id == request.category_id)
     if request.min_price is not None:
@@ -42,29 +82,49 @@ async def get_all_products(request: ProductFilterSchema  = Depends(),
         filters.append(ProductModel.stock > 0 if request.in_stock else ProductModel.stock == 0)
     if request.seller_id is not None:
         filters.append(ProductModel.seller_id == request.seller_id)
-    
+
     data_sort =[]
     if request.created is not None:
         data_sort.append(ProductModel.created_at.desc() if request.created else ProductModel.created_at.asc())
     else:
         data_sort.append(ProductModel.id)
 
+    total_stmt = select(func.count()).select_from(ProductModel).where(*filters)
+
+    rank_col = None
     if request.search is not None:
         search_value = request.search.strip()
         if search_value:
-            filters.append(func.lower(ProductModel.name).like(f"%{search_value.lower()}%"))
+            ts_query = func.websearch_to_tsquery('english', search_value)
+            filters.append(ProductModel.tsv.op('@@')(ts_query))
+            rank_col = func.ts_rank_cd(ProductModel.tsv, ts_query).label("rank")
+            # total с учётом полнотекстового фильтра
+            total_stmt = select(func.count()).select_from(ProductModel).where(*filters)
                            
-    total_stmt = select(func.count()).select_from(ProductModel).where(*filters)
     total = await db.scalar(total_stmt) or 0
 
-    product_stm = (
-        select(ProductModel)
-        .where(*filters)
-        .order_by(*data_sort)
-        .offset((request.page - 1) * request.page_size)
-        .limit(request.page_size)
-    )
-    items = (await db.scalars(product_stm)).all()
+    # Основной запрос (если есть поиск — добавим ранг в выборку и сортировку)
+    if rank_col is not None:
+        product_stm = (
+            select(ProductModel, rank_col)
+            .where(*filters)
+            .order_by(desc(rank_col), *data_sort)
+            .offset((request.page - 1) * request.page_size)
+            .limit(request.page_size)
+        )
+        result = await db.execute(product_stm)
+        rows = result.all()
+        items = [row[0] for row in rows]
+    else:
+        product_stm = (
+            select(ProductModel, rank_col)
+            .where(*filters)
+            .order_by(*data_sort)
+            .offset((request.page - 1) * request.page_size)
+            .limit(request.page_size)
+        )
+        items = (await db.scalars(product_stm)).all()
+
     return {
         "items": items,
         "total": total,
@@ -75,7 +135,8 @@ async def get_all_products(request: ProductFilterSchema  = Depends(),
 
 @router.post("/", response_model=ProductSchema, status_code=status.HTTP_201_CREATED)
 async def create_product(
-    product: ProductCreateSchema,
+    product: ProductCreateSchema = Depends(ProductCreateSchema.as_form),
+    image: UploadFile | None = File(None),
     db: AsyncSession = Depends(get_async_db),
     current_user: UserModel = Depends(get_current_seller),
 ) -> ProductSchema:
@@ -83,7 +144,7 @@ async def create_product(
     result = await db.scalars(
         select(CategoryModel).where(
             CategoryModel.id == product.category_id,
-            CategoryModel.is_active == True,    # noqa
+            CategoryModel.is_active.is_(True)
         ),
     )
     category = result.first()
@@ -92,7 +153,12 @@ async def create_product(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Category not found or inactive",
         )
-    db_product = ProductModel(**product.model_dump(), seller_id=current_user.id)
+    image_url = await save_product_image(image) if image else None
+    db_product = ProductModel(
+        **product.model_dump(),
+        seller_id=current_user.id,
+        image_url=image_url
+    ) 
     db.add(db_product)
     await db.commit()
     await db.refresh(db_product)
@@ -189,7 +255,8 @@ async def get_product_reviews(product_id: int,
 @router.put("/{product_id}", response_model=ProductSchema)
 async def update_product(
     product_id: int,
-    product: ProductCreateSchema,
+    product: ProductCreateSchema = Depends(ProductCreateSchema.as_form),
+    image: UploadFile | None = File(None),
     db: AsyncSession = Depends(get_async_db),
     current_user: UserModel = Depends(get_current_seller),
 ) -> ProductSchema:
@@ -229,6 +296,10 @@ async def update_product(
         .where(ProductModel.id == product_id)
         .values(**product.model_dump()),
     )
+    if image:
+        remove_product_image(db_product.image_url)
+        db_product.image_url = save_product_image(image)
+
     await db.commit()
     await db.refresh(db_product)
     return db_product
@@ -258,7 +329,11 @@ async def delete_product(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You can only delete your own products",
         )
+    
+    remove_product_image(product.image_url)
+
     product.is_active = False
+    product.image_url = None
     await db.commit()
     await db.refresh(product)
     return product

@@ -1,3 +1,4 @@
+from .cart_items import CartItem
 from .categories import Category
 from .products import Product
 from .reviews import Review
@@ -8,4 +9,5 @@ __all__ = [
     "Product",
     "User",
     "Review",
+    "CartItem"
 ]
