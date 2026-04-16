@@ -56,9 +56,6 @@ async def create_review(review: ReviewCreateSchema,
 
     return db_review
 
-
-@router.get("/", response_model=list[ReviewSchema])
-async def get_all_reviews(db: AsyncSession = Depends(get_async_db)) -> list[ReviewSchema]:
     """Возвращает все отзывы"""
     result = await db.scalars(
         select(ReviewModel).where(ReviewModel.is_active == True)
